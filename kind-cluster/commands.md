@@ -115,7 +115,71 @@
   ```
 
 ---
+## Fix: ApplicationSet CRD Installation Error
 
+While installing Argo CD, you may encounter the following error:
+
+```bash
+The CustomResourceDefinition "applicationsets.argoproj.io" is invalid:
+metadata.annotations: Too long: must have at most 262144 bytes
+```
+
+### Reason
+
+This happens because:
+
+- `kubectl apply` stores the entire manifest inside the annotation:
+  
+  ```bash
+  kubectl.kubernetes.io/last-applied-configuration
+  ```
+
+- Argo CD CRD manifests are very large.
+- Kubernetes annotations have a size limit of **256 KB**.
+- As a result, some CRDs fail to install properly.
+
+This can cause:
+- `ApplicationSet` CRD missing
+- `argocd-applicationset-controller` pod crashing
+- `CrashLoopBackOff` errors
+
+---
+
+## Solution
+
+### 1. Delete the broken CRD (if present)
+
+```bash
+kubectl delete crd applicationsets.argoproj.io --ignore-not-found
+```
+
+### 2. Install the CRD using `create` instead of `apply`
+
+```bash
+kubectl create -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/crds/applicationset-crd.yaml
+```
+
+### Why `create` works
+
+`kubectl create` does not store the large annotation metadata, so it bypasses the Kubernetes annotation size limit.
+
+---
+
+## Restart the ApplicationSet Controller
+
+```bash
+kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller
+```
+
+---
+
+## Verify
+
+```bash
+kubectl get pods -n argocd
+```
+
+All Argo CD pods should now be in the `Running` state.
 ## 7. Deleting Kubernetes Cluster
 
 - Delete the Kind cluster:
